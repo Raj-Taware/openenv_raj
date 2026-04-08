@@ -1,0 +1,19 @@
+# Keep Docker build context small so prevalidation Step 2 finishes within timeout.
+
+# VCS and local env
+.git
+.gitignore
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Local artifacts and metadata
+quantum_optimization.egg-info
+push_log.txt
+
+# Development-only content not needed to run the server
+docs
+*.ipynb
