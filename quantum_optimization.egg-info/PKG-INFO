@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: quantum-optimization
+Version: 1.0.0
+Summary: Quantum Optimization environment
+Requires-Python: <3.13,>=3.10
+Requires-Dist: openenv-core>=0.2.2
+Requires-Dist: qiskit<2.0.0,>=1.0.0
+Requires-Dist: qiskit-aer>=0.14.0
+Requires-Dist: numpy<2.0.0,>=1.21.0
+Requires-Dist: gymnasium>=0.29.0
+Requires-Dist: torch>=2.0.0
+Requires-Dist: openai>=1.0.0
+Requires-Dist: gradio>=4.40.0

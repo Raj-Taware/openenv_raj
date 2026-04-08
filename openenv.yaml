@@ -1,0 +1,31 @@
+name: quantum-algorithm-optimization
+version: 1.0.0
+description: An RL environment for optimizing quantum algorithms using Qiskit simulations
+author: Chetan
+
+action_space:
+  type: Discrete
+  n: 20  # Actions: add_H, add_CNOT, add_T, remove_gate, etc.
+
+observation_space:
+  type: Dict
+  spaces:
+    circuit_gates: Sequence[Dict[str, Any]]
+    qubit_count: Discrete[1, 10]
+    current_fidelity: Box[0.0, 1.0]
+    problem_params: Dict[str, Any]
+    steps_remaining: Discrete[0, 50]
+
+tasks:
+  - name: parity-optimization
+    difficulty: easy
+    description: Optimize a 3-qubit parity circuit
+  - name: shors-factoring
+    difficulty: medium
+    description: Factor 15 using Shor's algorithm
+  - name: vqe-h2
+    difficulty: hard
+    description: Find H2 ground state energy with VQE
+
+reward_range: [-1.0, 1.0]
+max_episode_steps: 50

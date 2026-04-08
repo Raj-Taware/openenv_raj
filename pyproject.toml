@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantum-optimization"
+version = "1.0.0"
+description = "Quantum Optimization environment"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "openenv-core>=0.2.2",
+    "qiskit>=1.0.0,<2.0.0",
+    "qiskit-aer>=0.14.0",
+    "numpy>=1.21.0,<2.0.0",
+    "gymnasium>=0.29.0",
+    "torch>=2.0.0",
+    "openai>=1.0.0",
+    "gradio>=4.40.0"
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["src", "server"]
+package-dir = { "src" = "src", "server" = "server" }
