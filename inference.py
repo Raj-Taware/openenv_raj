@@ -8,7 +8,10 @@ while emitting only [START], [STEP], and [END] lines in the required format.
 import os
 from typing import List
 
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
 from src.environment import QuantumOptimizationEnv
 from src.policy import HybridPolicy
@@ -70,7 +73,7 @@ def run_task(task: str) -> float:
     """Run one episode and emit exactly START/STEP/END lines to stdout."""
     # Instantiate OpenAI client using mandatory variables for all LLM calls.
     # The policy receives these same values and uses OpenAI-compatible chat API.
-    if _USE_LLM:
+    if _USE_LLM and OpenAI is not None:
         _ = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     env = QuantumOptimizationEnv(task=task)
