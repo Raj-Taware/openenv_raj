@@ -13,7 +13,13 @@ try:
 except ImportError:
     OpenAI = None
 
-from src.environment import QuantumOptimizationEnv
+try:
+    from src.environment import QuantumOptimizationEnv
+    IS_LOCAL = True
+except ImportError:
+    from client import QuantumEnv
+    from models import QuantumAction
+    IS_LOCAL = False
 from src.policy import HybridPolicy
 
 # Mandatory variables. Defaults are only allowed for API_BASE_URL and MODEL_NAME.
@@ -76,7 +82,43 @@ def run_task(task: str) -> float:
     if _USE_LLM and OpenAI is not None:
         _ = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-    env = QuantumOptimizationEnv(task=task)
+    if IS_LOCAL:
+        env = QuantumOptimizationEnv(task=task)
+    else:
+        class RemoteWrapper:
+            def __init__(self, task_name):
+                self.env = QuantumEnv()
+                self.task = task_name
+                self.max_steps = 50
+            def reset(self):
+                try:
+                    res = self.env.reset(task=self.task)
+                except Exception:
+                    res = self.env.reset()
+                return self._extract_obs(res)
+            def step(self, action: int):
+                res = self.env.step(QuantumAction(action=action))
+                obs_dict = self._extract_obs(res)
+                return obs_dict, getattr(res, "reward", 0.0), getattr(res, "done", False), {}
+            def close(self):
+                pass
+            def _get_final_score(self):
+                return 0.0
+
+            def _extract_obs(self, res):
+                obs_obj = getattr(res, "observation", res)
+                if hasattr(obs_obj, "model_dump"):
+                    return obs_obj.model_dump()
+                if hasattr(obs_obj, "dict"):
+                    return obs_obj.dict()
+                return {
+                    "circuit_gates": getattr(obs_obj, "circuit_gates", []),
+                    "qubit_count": getattr(obs_obj, "qubit_count", 3),
+                    "current_fidelity": getattr(obs_obj, "current_fidelity", [0.0]),
+                    "problem_params": getattr(obs_obj, "problem_params", {}),
+                    "steps_remaining": getattr(obs_obj, "steps_remaining", 0),
+                }
+        env = RemoteWrapper(task)
     policy = HybridPolicy(
         task=task,
         model_path=_MODEL_PATHS.get(task),
