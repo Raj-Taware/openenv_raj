@@ -6,21 +6,51 @@ while emitting only [START], [STEP], and [END] lines in the required format.
 """
 
 import os
+import sys
 from typing import List
+
+# Ensure the repo root is always on sys.path so that src/ is importable
+# when the validator runs us from an arbitrary working directory.
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
 
 try:
     from openai import OpenAI
 except ImportError:
     OpenAI = None
 
+OPENENV_BASE_URL = os.getenv("OPENENV_BASE_URL")
+
+_LOCAL_ENV_ERROR = None
 try:
     from src.environment import QuantumOptimizationEnv
-    IS_LOCAL = True
-except ImportError:
+except ImportError as exc:
+    QuantumOptimizationEnv = None
+    _LOCAL_ENV_ERROR = exc
+
+_REMOTE_IMPORT_ERROR = None
+try:
     from client import QuantumEnv
     from models import QuantumAction
-    IS_LOCAL = False
-from src.policy import HybridPolicy
+except ImportError as exc:
+    QuantumEnv = None
+    QuantumAction = None
+    _REMOTE_IMPORT_ERROR = exc
+
+try:
+    from src.policy import HybridPolicy
+except ImportError:
+    import random
+
+    class HybridPolicy:  # type: ignore[no-redef]
+        """Last-resort policy used only when the trained policy cannot be imported."""
+
+        def __init__(self, **kwargs):
+            pass
+
+        def select_action(self, obs):
+            return random.randint(0, 19), "random-fallback"
 
 # Mandatory variables. Defaults are only allowed for API_BASE_URL and MODEL_NAME.
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
@@ -75,35 +105,50 @@ def _normalize_score(raw_score: float) -> float:
     return min(max(float(raw_score), 0.0), 1.0)
 
 
-def run_task(task: str) -> float:
-    """Run one episode and emit exactly START/STEP/END lines to stdout."""
-    # Instantiate OpenAI client using mandatory variables for all LLM calls.
-    # The policy receives these same values and uses OpenAI-compatible chat API.
-    if _USE_LLM and OpenAI is not None:
-        _ = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+def _runtime_error_message() -> str:
+    local_msg = f"local import failed: {_LOCAL_ENV_ERROR}" if _LOCAL_ENV_ERROR else "local import unavailable"
+    remote_msg = (
+        f"remote import failed: {_REMOTE_IMPORT_ERROR}"
+        if _REMOTE_IMPORT_ERROR
+        else "remote mode requires OPENENV_BASE_URL"
+    )
+    return (
+        "No supported runtime is available for inference.py. "
+        f"{local_msg}; {remote_msg}. "
+        "Inside Docker, install dependencies into system Python so src.environment imports cleanly."
+    )
 
-    if IS_LOCAL:
-        env = QuantumOptimizationEnv(task=task)
-    else:
+
+def _build_environment(task: str):
+    if QuantumOptimizationEnv is not None:
+        return QuantumOptimizationEnv(task=task)
+
+    if OPENENV_BASE_URL and QuantumEnv is not None and QuantumAction is not None:
         class RemoteWrapper:
-            def __init__(self, task_name):
-                self.env = QuantumEnv()
+            def __init__(self, task_name: str):
+                self.env = QuantumEnv(base_url=OPENENV_BASE_URL).sync()
                 self.task = task_name
                 self.max_steps = 50
+                self._last_info = {}
+
             def reset(self):
-                try:
-                    res = self.env.reset(task=self.task)
-                except Exception:
-                    res = self.env.reset()
+                res = self.env.reset(task=self.task)
                 return self._extract_obs(res)
+
             def step(self, action: int):
                 res = self.env.step(QuantumAction(action=action))
                 obs_dict = self._extract_obs(res)
-                return obs_dict, getattr(res, "reward", 0.0), getattr(res, "done", False), {}
+                info = getattr(res, "metadata", {}) or {}
+                if not isinstance(info, dict):
+                    info = {}
+                self._last_info = info
+                return obs_dict, getattr(res, "reward", 0.0), getattr(res, "done", False), info
+
             def close(self):
-                pass
+                self.env.close()
+
             def _get_final_score(self):
-                return 0.0
+                return float(self._last_info.get("final_score", 0.0))
 
             def _extract_obs(self, res):
                 obs_obj = getattr(res, "observation", res)
@@ -118,7 +163,20 @@ def run_task(task: str) -> float:
                     "problem_params": getattr(obs_obj, "problem_params", {}),
                     "steps_remaining": getattr(obs_obj, "steps_remaining", 0),
                 }
-        env = RemoteWrapper(task)
+
+        return RemoteWrapper(task)
+
+    raise RuntimeError(_runtime_error_message())
+
+
+def run_task(task: str) -> float:
+    """Run one episode and emit exactly START/STEP/END lines to stdout."""
+    # Instantiate OpenAI client using mandatory variables for all LLM calls.
+    # The policy receives these same values and uses OpenAI-compatible chat API.
+    if _USE_LLM and OpenAI is not None:
+        _ = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+
+    env = _build_environment(task)
     policy = HybridPolicy(
         task=task,
         model_path=_MODEL_PATHS.get(task),

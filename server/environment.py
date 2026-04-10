@@ -17,7 +17,9 @@ class QuantumEnvironment(Environment):
         self.env = QuantumOptimizationEnv(task=task)
         self._state = State(episode_id=str(uuid4()), step_count=0)
 
-    def reset(self) -> QuantumObservation:
+    def reset(self, task: str | None = None) -> QuantumObservation:
+        if task is not None and task != self.env.task:
+            self.env = QuantumOptimizationEnv(task=task)
         self._state = State(episode_id=str(uuid4()), step_count=0)
         obs = self.env.reset()
         
